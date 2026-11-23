@@ -1,0 +1,2 @@
+# Loaded instead of cdc-hooks.resc for firmware that differs from the course build:
+# the CDC_WAIT_EXIT hook addresses belong to that build's code only.

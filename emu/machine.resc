@@ -1,0 +1,12 @@
+$machine_name="jpbootcamp"
+include @refs/Renode_RP2040/cores/initialize_peripherals_source.resc
+# Own models that platform/rp2040.repl names (they extend the vendored DMA), so they load here,
+# after the vendored models and before the platform.
+include @model/RP2040DmaWithIrq.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.DMA.RP2040DmaWithIrq"
+include @model/RP2040PioDreqBridge.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.DMA.RP2040PioDreqBridge"
+include @model/RP2040SioWithExclusiveSpinlocks.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.Miscellaneous.RP2040SioWithExclusiveSpinlocks"
+machine LoadPlatformDescription @platform/raspberry_pico.repl
+sysbus LoadELF @refs/Renode_RP2040/bootroms/rp2040/b2.elf

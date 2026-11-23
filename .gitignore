@@ -1,0 +1,8 @@
+upstream/
+work/
+tools/
+logs/
+vmtest/state/
+vmtest/logs/
+**/__pycache__/
+emu/run/

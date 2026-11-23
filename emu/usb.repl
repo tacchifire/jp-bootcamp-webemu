@@ -1,0 +1,5 @@
+usb: USB.RP2040UsbDevice @ sysbus 0x50110000
+    IRQ -> nvic0@5 | nvic1@5
+
+usbHost: USB.BridgedUsbHost @ sysbus
+    controller: usb

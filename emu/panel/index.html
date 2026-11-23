@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ja">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jp-bootcamp-webemu 操作パネル</title>
+<style>
+  body { font: 16px/1.7 system-ui, sans-serif; max-width: 760px; margin: 3rem auto; padding: 0 1.2rem; color: #192b3c; background: #f5f7fa; }
+  h1 { font-size: 1.6rem; }
+  section { background: white; padding: 1.5rem; border: 1px solid #d6dee6; border-radius: 12px; }
+  #state { display: inline-block; padding: .2rem 1rem; border-radius: 8px; font-size: 2rem; font-weight: bold; background: #e2e8f0; }
+  #state[data-state="BOOTING"] { color: #124e85; background: #deedff; }
+  #state[data-state="READY"] { color: #145c37; background: #d7f5e4; }
+  #state[data-state="REBOOTING"] { color: #764500; background: #ffebbd; }
+  #state[data-state="ERROR"] { color: #92272c; background: #ffe0e2; }
+  #state[data-state="STOPPING"] { color: #454c55; background: #e2e8f0; }
+  button, a { display: inline-block; padding: .6rem 1.2rem; font-size: 1rem; }
+  button { cursor: pointer; background: #154f8c; color: white; border: 0; border-radius: 6px; }
+  button:disabled { background: #64748b; cursor: not-allowed; }
+  #error { color: #92272c; }
+  dt { font-weight: bold; } dd { margin-left: 0; margin-bottom: .6rem; }
+  h2 { font-size: 1.25rem; margin-top: 2rem; }
+  h3 { font-size: 1rem; margin: 1.2rem 0 .4rem; }
+  h3:first-child { margin-top: 0; }
+  code { font-family: ui-monospace, monospace; font-size: .9em; }
+  .note { font-size: .9rem; color: #475569; }
+  .warning { color: #764500; background: #fff4d6; padding: .4rem .8rem; border-radius: 6px; }
+  .error { color: #92272c; }
+  table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+  th, td { text-align: left; padding: .35rem .4rem; border-bottom: 1px solid #d6dee6; vertical-align: top; }
+  td button { padding: .3rem .8rem; font-size: .9rem; }
+  #ids-log { max-height: 24rem; overflow: auto; margin: 0; padding: .8rem; border-radius: 8px; background: #0f1720; color: #d7e0ea; font: 13px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-all; }
+  #ids-log .alert { color: #ffb4b4; font-weight: bold; }
+</style>
+<h1>jp-bootcamp-webemu 操作パネル</h1>
+<section aria-label="エミュレータの状態">
+  <div id="state" role="status">確認中</div>
+  <dl>
+    <dt>起動完了メッセージ（boot_info_seen）</dt><dd id="boot">未確認</dd>
+    <dt>CDC 両ポートの接続（cdc_both_open）</dt><dd id="cdc">未確認</dd>
+    <dt>詳細</dt><dd id="detail">状態を取得しています</dd>
+  </dl>
+  <button id="reset" disabled>RESET</button>
+  <a id="c3" target="_blank" rel="noopener">C3 を開く（ポート8000）</a>
+  <p id="error" role="alert"></p>
+</section>
+<ul>
+  <li>コマンドは READY になってから C3 で送ってください（起動完了前に届いたフレームは失われます）</li>
+  <li>C3 の link_state 表示は切断検出に使えません</li>
+  <li>RESET は実機の RESET ボタン相当で、ファームが最初から起動し直します</li>
+</ul>
+<h2>ファームウェア</h2>
+<section aria-label="ファームウェア">
+  <h3>使用中（今の起動で書き込まれているもの）</h3>
+  <dl>
+    <dt>ファイル名</dt><dd id="fw-name">確認中</dd>
+    <dt>由来</dt><dd id="fw-origin">確認中</dd>
+    <dt>サイズ</dt><dd id="fw-size">確認中</dd>
+    <dt>SHA-256（UF2、先頭12桁）</dt><dd><code id="fw-sha">確認中</code></dd>
+    <dt>SHA-256（書き込む BIN、先頭12桁）</dt><dd><code id="fw-bin">確認中</code></dd>
+  </dl>
+  <p id="fw-warning" class="warning" hidden></p>
+  <h3>保存済みのファームウェア</h3>
+  <table>
+    <thead><tr><th>ファイル名</th><th>由来</th><th>サイズ</th><th>SHA-256</th><th>状態</th><th></th></tr></thead>
+    <tbody id="fw-list"></tbody>
+  </table>
+  <div id="fw-pending" hidden>
+    <p class="warning" id="fw-pending-text"></p>
+    <button id="restart" disabled>再起動して反映</button>
+  </div>
+  <h3>UF2 をアップロード</h3>
+  <p class="note">RP2040 用の .uf2（コースのファームを元にしたビルド）を保存します。形式を確認し、不正なファイルは受け付けません。保存しただけでは切り替わりません。一覧で選んで再起動すると反映されます。</p>
+  <input type="file" id="fw-file" accept=".uf2">
+  <button id="upload">アップロード</button>
+  <p id="fw-message" role="status"></p>
+</section>
+<h2>IDS の出力</h2>
+<section aria-label="IDS の出力">
+  <p class="note"><code>emu/run/logs/ids.log</code> の末尾（最大200行、2秒ごとに更新）。<code>&gt;&gt; IDS</code> で始まる行が IDS のアラート。</p>
+  <pre id="ids-log">取得中</pre>
+  <p id="ids-error" class="error" role="alert"></p>
+</section>
+<script>
+  const state = document.getElementById('state');
+  const reset = document.getElementById('reset');
+  const error = document.getElementById('error');
+  let sending = false;
+  let generation = 0;
+  const c3 = new URL(location.href);
+  c3.hostname = location.hostname;
+  c3.port = '8000';
+  c3.pathname = '/'; c3.search = ''; c3.hash = '';
+  document.getElementById('c3').href = c3.href;
+
+  function render(data) {
+    state.textContent = data.state;
+    state.dataset.state = data.state;
+    document.getElementById('boot').textContent = data.boot_info_seen ? '確認済み' : '未確認';
+    document.getElementById('cdc').textContent = data.cdc_both_open ? '確認済み' : '未確認';
+    document.getElementById('detail').textContent = data.detail;
+    reset.disabled = sending || data.state !== 'READY';
+  }
+
+  async function poll() {
+    const current = generation;
+    try {
+      const response = await fetch('/api/state', {cache: 'no-store', signal: AbortSignal.timeout(3000)});
+      if (!response.ok) throw new Error(`状態取得に失敗しました (${response.status})`);
+      const data = await response.json();
+      if (current === generation && !sending) { render(data); error.textContent = ''; }
+    } catch (err) {
+      if (current === generation && !sending) {
+        reset.disabled = true;
+        state.textContent = '接続未確認'; state.dataset.state = 'ERROR';
+        error.textContent = `操作パネルに接続できません: ${err.message}`;
+      }
+    } finally { setTimeout(poll, 1000); }
+  }
+
+  reset.addEventListener('click', async () => {
+    sending = true; generation++; reset.disabled = true; error.textContent = '';
+    try {
+      const response = await fetch('/api/reset', {method: 'POST', signal: AbortSignal.timeout(5000)});
+      const data = await response.json();
+      render(data);
+      if (!response.ok) throw new Error(`RESET は受け付けられませんでした (${response.status})`);
+    } catch (err) { error.textContent = err.message; }
+    finally { sending = false; }
+  });
+  poll();
+
+  // ---- firmware: what is in use, what is stored, upload, select, restart
+  const PANEL = {'X-JP-Emu-Panel': '1'};
+  const fwMessage = document.getElementById('fw-message');
+  const restart = document.getElementById('restart');
+  const fileInput = document.getElementById('fw-file');
+  const upload = document.getElementById('upload');
+  let fw = null;
+  let fwBusy = false;
+
+  function size(n) {
+    if (n === null || n === undefined) return '不明';
+    const unit = n >= 1048576 ? `${(n / 1048576).toFixed(2)} MiB` : `${(n / 1024).toFixed(1)} KiB`;
+    return `${n.toLocaleString()} バイト（${unit}）`;
+  }
+  const short = (sha) => sha ? sha.slice(0, 12) : '不明';
+  const origin = (o) => o === 'course' ? 'コース標準' : 'アップロード';
+  function say(text, isError) { fwMessage.textContent = text; fwMessage.className = isError ? 'error' : ''; }
+
+  async function api(path, options) {
+    const response = await fetch(path, {cache: 'no-store', signal: AbortSignal.timeout(60000), ...options});
+    let data = {};
+    try { data = await response.json(); } catch (err) { /* keep {} */ }
+    if (!response.ok) throw new Error(data.error || `${path} が失敗しました (${response.status})`);
+    return data;
+  }
+
+  function renderFirmware() {
+    const a = fw.active;
+    document.getElementById('fw-name').textContent = a.name;
+    document.getElementById('fw-origin').textContent = origin(a.origin)
+      + (a.origin === 'upload' && a.course_identical ? '（中身はコース標準と同一）' : '');
+    document.getElementById('fw-size').textContent = size(a.size);
+    const sha = document.getElementById('fw-sha');
+    sha.textContent = short(a.sha256); sha.title = a.sha256 || '';
+    const bin = document.getElementById('fw-bin');
+    bin.textContent = short(a.bin_sha256); bin.title = a.bin_sha256 || '';
+    const warning = document.getElementById('fw-warning');
+    warning.hidden = !a.warning; warning.textContent = a.warning || '';
+
+    const rows = fw.items.map((item) => {
+      const tr = document.createElement('tr');
+      const status = item.id === a.id ? '使用中'
+        : item.id === fw.selected ? '次回の起動で使用' : '';
+      const cells = [item.name, origin(item.origin), size(item.size), short(item.sha256), status];
+      for (const text of cells) {
+        const td = document.createElement('td'); td.textContent = text; tr.appendChild(td);
+      }
+      tr.children[3].title = item.sha256 || '';
+      const td = document.createElement('td');
+      const button = document.createElement('button');
+      button.textContent = item.id === fw.selected ? '選択中' : '選択';
+      button.disabled = fwBusy || item.id === fw.selected;
+      button.addEventListener('click', () => choose(item.id));
+      td.appendChild(button); tr.appendChild(td);
+      return tr;
+    });
+    document.getElementById('fw-list').replaceChildren(...rows);
+
+    const pending = fw.selected !== a.id;
+    document.getElementById('fw-pending').hidden = !pending;
+    if (pending) {
+      const chosen = fw.items.find((item) => item.id === fw.selected);
+      document.getElementById('fw-pending-text').textContent = chosen
+        ? `次の起動では ${chosen.name}（${origin(chosen.origin)}）を使います。スタックを再起動すると反映されます（1分前後かかり、その間は C3 を使えません）。`
+        : '選択中のファイルが見つかりません。再起動するとコース標準で起動します。';
+    }
+    restart.disabled = fwBusy || !fw.can_restart;
+    upload.disabled = fwBusy;
+  }
+
+  async function loadFirmware() {
+    try {
+      fw = await api('/api/firmware');
+      renderFirmware();
+    } catch (err) { say(`ファームウェアの情報を取得できません: ${err.message}`, true); }
+  }
+
+  async function busyWhile(work) {
+    fwBusy = true; if (fw) renderFirmware();
+    try { await work(); } catch (err) { say(err.message, true); }
+    finally { fwBusy = false; await loadFirmware(); }
+  }
+
+  function choose(id) {
+    busyWhile(async () => {
+      fw = await api('/api/firmware/select', {method: 'POST', body: JSON.stringify({id}),
+        headers: {...PANEL, 'Content-Type': 'application/json'}});
+      say(fw.selected === fw.active.id ? '使用中のファームウェアを選び直しました。再起動は不要です。'
+        : '選択しました。「再起動して反映」で切り替わります。');
+    });
+  }
+
+  upload.addEventListener('click', () => {
+    const file = fileInput.files[0];
+    if (!file) { say('アップロードする .uf2 ファイルを選んでください', true); return; }
+    if (fw && file.size > fw.max_upload) { say(`ファイルが大きすぎます（上限 ${fw.max_upload / 1048576} MiB）`, true); return; }
+    busyWhile(async () => {
+      say(`${file.name} をアップロードしています`);
+      const data = await api(`/api/firmware/upload?name=${encodeURIComponent(file.name)}`, {method: 'POST',
+        body: file, headers: {...PANEL, 'Content-Type': 'application/octet-stream'}});
+      say(data.created ? `保存しました: ${data.item.name}（一覧で選んで再起動すると使えます）`
+        : `同じ名前・同じ内容のファイルが保存済みです: ${data.item.name}`);
+      fileInput.value = '';
+    });
+  });
+
+  restart.addEventListener('click', () => {
+    if (!confirm('スタック（Renode・IDS・C3）を再起動して、選択中のファームウェアで起動し直します。よろしいですか？')) return;
+    busyWhile(async () => {
+      await api('/api/restart', {method: 'POST', headers: PANEL});
+      say('再起動を受け付けました。上の状態が READY に戻るまで待ってください。');
+    });
+  });
+
+  async function pollFirmware() {
+    if (!fwBusy) await loadFirmware();
+    setTimeout(pollFirmware, 3000);
+  }
+  pollFirmware();
+
+  // ---- IDS output: tail of ids.log, kept scrolled to the end unless the reader scrolled up
+  const idsBox = document.getElementById('ids-log');
+  const idsError = document.getElementById('ids-error');
+  let idsKey = null;
+  async function pollIds() {
+    try {
+      const data = await api('/api/ids-log', {signal: AbortSignal.timeout(5000)});
+      const key = `${data.size}:${data.lines.length}:${data.lines[data.lines.length - 1] || ''}`;
+      if (key !== idsKey) {
+        idsKey = key;
+        const follow = idsBox.scrollHeight - idsBox.scrollTop - idsBox.clientHeight < 32;
+        if (data.lines.length === 0) {
+          idsBox.textContent = '（まだ出力がありません。IDS は READY の直前に起動します）';
+        } else {
+          idsBox.replaceChildren(...data.lines.map((line) => {
+            const span = document.createElement('span');
+            if (line.includes('>> IDS')) span.className = 'alert';
+            span.textContent = line + '\n';
+            return span;
+          }));
+        }
+        if (follow) idsBox.scrollTop = idsBox.scrollHeight;
+      }
+      idsError.textContent = '';
+    } catch (err) { idsError.textContent = `IDS の出力を取得できません: ${err.message}`; }
+    finally { setTimeout(pollIds, 2000); }
+  }
+  pollIds();
+</script>
+</html>

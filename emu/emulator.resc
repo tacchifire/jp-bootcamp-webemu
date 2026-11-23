@@ -1,0 +1,15 @@
+$firmware?=@run/firmware.bin
+$cdc_hooks?=@cdc-hooks.resc
+include @machine.resc
+include @model/RP2040UsbDevice.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.USB.RP2040UsbDevice"
+include @model/MinimalUsbHost.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.USB.MinimalUsbHost"
+include @model/BridgedUsbHost.cs
+EnsureTypeIsLoaded "Antmicro.Renode.Peripherals.USB.BridgedUsbHost"
+machine LoadPlatformDescription @usb.repl
+sysbus LoadBinary $firmware 0x10000000
+sysbus.cpu0 VectorTableOffset 0
+sysbus.cpu1 VectorTableOffset 0
+include $cdc_hooks
+start

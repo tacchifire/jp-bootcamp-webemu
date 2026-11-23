@@ -1,0 +1,5 @@
+# Observation hooks for the course build only (run/firmware.bin, sha256 6adeee7b...):
+# both cores leaving the wait for the CDC host. The supervisor counts these lines in
+# renode.log to decide when RESET has finished.
+sysbus.cpu0 AddHook 0x1000f544 "self.InfoLog('CDC_WAIT_EXIT core0 PC=0x1000f544')"
+sysbus.cpu1 AddHook 0x1000f592 "self.InfoLog('CDC_WAIT_EXIT core1 PC=0x1000f592')"

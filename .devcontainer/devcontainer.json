@@ -1,0 +1,10 @@
+{
+  "name": "jp-bootcamp-webemu",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "forwardPorts": [8000, 8080],
+  "portsAttributes": {
+    "8000": { "label": "PWNSAT-C3" },
+    "8080": { "label": "Emulator panel" }
+  },
+  "postCreateCommand": "bash emu/setup.sh"
+}
